@@ -1,0 +1,5 @@
+
+ * 1.1: 15.02.2012: Added support for Actua camera (32 bits with 3 pixels 10-bit)
+ * 1.0: 06.02.2012: First stable release
+ 
+
