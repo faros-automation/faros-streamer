@@ -51,6 +51,11 @@
 #define min(a,b) ((a)<(b)? (a) : (b))
 #define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
 
+int quality_factor[][5][5] = 
+	{ 
+		{ { 5, 5, 5, 5, 5 }, { 5, 1, 1, 1, 5 }, { 5, 1, 1, 1, 5 }, { 5, 1, 1, 1, 5 }, { 5, 5, 5, 5, 5 } }
+	};
+
 unsigned char my_buffer[MAX_OUT_JPG_BUF];
 int my_buffer_fill;
 
@@ -334,10 +339,12 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		//int bufoff = k * (width * height * BpP) / n_pck;
 		/* Starting offset of the macroblock */
 		int bufoff = (r * mb_height * width + c * mb_width) * BpP;
-		buffer[bufoff] = 0;
-		buffer[bufoff+1] = 0;
-		buffer[bufoff+2] = 0;
-
+		/*
+		buffer[bufoff] = 0; buffer[bufoff+1] = 0; buffer[bufoff+2] = 0;
+		buffer[bufoff+mb_width*mb_height*BpP] = 0; buffer[bufoff+mb_width*mb_height*BpP+1] = 0; buffer[bufoff+mb_width*mb_height*BpP+2] = 0;
+		buffer[bufoff+mb_width*BpP] = 0; buffer[bufoff+mb_width*BpP+1] = 0; buffer[bufoff+mb_width*BpP+2] = 0;
+		buffer[bufoff+mb_width*(mb_height-1)*BpP+3] = 0; buffer[bufoff+mb_width*(mb_height-1)*BpP+4] = 0; buffer[bufoff+mb_width*(mb_height-1)*BpP+5] = 0;
+		*/
 		struct jpeg_compress_struct cinfo;
 		struct jpeg_error_mgr       jerr;
 
@@ -376,9 +383,16 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		/*set the quality [0..100]  */
 		//printf("FAROS_POLITO_IMG after set_defaults\n");
 
+		/* SVICIU: Introduco un fattore di cambiamento della qualità in funzione della distanza del MB dal centro immagine 
+		 *         NOTA: si può tabulare */
+
 		//float Qf = (sqrt_n_pck - abs( r+c - sqrt_n_pck ) / 4) / sqrt_n_pck;
-		float Qf = ( (sqrt_n_pck * .75) - max( abs(r - (sqrt_n_pck / 2)) , abs (c - (sqrt_n_pck / 2)) ) ) / (float) sqrt_n_pck;
-//		printf("r: %d, c: %d, Qf = %f\n", r, c, Qf);
+		//float Qf = ( (sqrt_n_pck * .75) - max( abs(r - (sqrt_n_pck / 2)) , abs (c - (sqrt_n_pck / 2)) ) ) / (float) sqrt_n_pck;
+		//int off = (max( abs(r - (sqrt_n_pck / 2)) , abs (c - (sqrt_n_pck / 2)) ) );	// distanza in MB
+//		float Qf = 1 - ((float)off/(sqrt_n_pck/2+1)); 
+		// float Qf = off ? 1.0/(1.5*off) : 1 ;		
+		float Qf = quality_factor[0][r][c];
+//		fprintf(stderr,"r: %d, c: %d, off: %d, Qf = %f\n", r, c, off, Qf);
 		jpeg_set_quality (&cinfo, quality*Qf, TRUE);
 
 
@@ -481,7 +495,7 @@ void my_error_handler (j_common_ptr cinfo) {
 }
 
 
-void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_data_len, int image_width) {
+void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_data_len, int image_width, int *output_components) {
 
 	//my_buffer = jpg_data
 	//bytes_in_input = jpg_data_len
@@ -518,6 +532,7 @@ void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_
 	//printf("cinfo.image_width=%d\n", cinfo.image_width);
 	//printf("cinfo.image_height=%d\n", cinfo.image_height);
 	//printf("cinfo.output_width=%d\n", cinfo.output_width);
+	//printf("cinfo.output_height=%d\n", cinfo.output_height);
 	//printf("cinfo.output_components=%d\n", cinfo.output_components);
 	//printf("cinfo.num_components=%d\n", cinfo.num_components);
 
@@ -529,19 +544,22 @@ void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_
 		while (cinfo.output_scanline < cinfo.output_height) {
 			//unsigned char *ptr = rgb+y*cinfo.image_width*cinfo.output_components;
 			unsigned char *ptr = rgb+y*image_width*cinfo.output_components;
+			//fprintf(stderr,"> Scanline offset of %d pixels.\n", y*image_width);
 			jpeg_read_scanlines(&cinfo, (JSAMPARRAY) &ptr, 1);  // They expect the address of a pointer to the row data
 			//jpeg_read_scanlines(&cinfo, imageBuffer, 1);
 			//memcpy(buffer+y*cinfo.image_width, imageBuffer, cinfo.image_width*cinfo.output_components);
 			y++;
 		}
 
+
 		//(*cinfo.mem->free_pool)( (j_common_ptr)&cinfo, JPOOL_IMAGE );
 
+		/*
 		if (cinfo.output_components==1) {
 			// riporta, nello stesso buffer, i valori Y come RGB. Parte dal fondo per non sovrascrivere
 			int i,ii,iii;
 			//for (i=cinfo.output_width*cinfo.image_height-1; i>=0; i--) {
-			for(ii=cinfo.image_height; ii>=0; ii--) {
+			for(ii=cinfo.output_height-1; ii>=0; ii--) {
 				for(iii=cinfo.output_width-1 ; iii>=0; iii--) {
 				i = ii * image_width + iii;
 				rgb[i*3+2]=rgb[i];
@@ -550,6 +568,7 @@ void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_
 				}
 			}
 		}
+		*/
 		jpeg_finish_decompress(&cinfo);
 	} else {
 		printf("Note: skipping corrupt data packet (missing a part?)\n");

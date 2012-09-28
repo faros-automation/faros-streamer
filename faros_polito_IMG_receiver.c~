@@ -46,7 +46,6 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <time.h>
-#include <pthread.h>
 #include "errlib.h"
 #include "sockwrap.h"
 #include "faros_polito_IMG_common.h"
@@ -61,9 +60,6 @@ char *prog_name;
 int debug = 0;
 
 #define VERSION "1.1"
-
-/* SVICIU: control thread include */
-void *control_thread_main();
 
 void update_stat(net_par_t *net_par, int delay_send_to_display) {
 	sender_stat_t *s = &(net_par->stat);
@@ -314,14 +310,15 @@ static void process_image_yuyv (uint8_t * videoFrame,  image_context image_ctx, 
 
 //		if (oc==1) {
 			// riporta, nello stesso buffer, i valori Y come RGB. Parte dal fondo per non sovrascrivere
+			/*
 			int iii;
 			for(iii=net_par->st.width*net_par->st.height-1; iii>=0; iii--) {
 				videoFrame[iii*3+2]=videoFrame[iii];
 				videoFrame[iii*3+1]=videoFrame[iii];
 				videoFrame[iii*3+0]=videoFrame[iii];
 			}
+			*/
 //		}
-
 
 	int kk, ll;
 	for(kk=0;kk<sqrt_n_pck;kk++) {
@@ -645,26 +642,9 @@ int main (int argc, char ** argv)
 
     net_par.st.framerate=30;
     net_par.st.clock=90000;  // 90 KHz
-
-
-	/* SVICIU: fork control thread */
-	{
-	pthread_t chat;
-	int rc;
-
-	printf("[main] creating %s thread.\n", "control");
-	if( (rc = pthread_create(&chat, NULL, control_thread_main, NULL)) ) {
-		printf("ERROR; return code from pthread_create() is %d\n", rc);
-		exit(-1);
-	}
-
-	}
     
     while(1) {
 	process_image_yuyv  (videoFrame, img_ctx, &net_par, zoom);
     }
-
-	/* Last thing that main() should do */
-	pthread_exit(NULL);
     exit (1);
 }

@@ -62,7 +62,7 @@ static void err_doit (int errnoflag, int level, const char *fmt, va_list ap) {
 	strcat (buf, "\n");
 
 	if (daemon_proc)
-		syslog (level, "%s", buf);
+		syslog (level, "%s\n", buf);
 	else {
 		fflush (stdout);
 		fputs (buf, stderr);

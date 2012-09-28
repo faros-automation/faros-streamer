@@ -1,0 +1,4 @@
+./faros_polito_IMG_sender -w 640*480 -H 127.0.0.1 -P 2000 -J 25 -Q 15 -T 1 -C 1 -G 1
+./faros_polito_IMG_receiver -w 640*480 -H 127.0.0.1 -P 2000 -J 25 -T 1
+
+# Make control adaptive with user interface

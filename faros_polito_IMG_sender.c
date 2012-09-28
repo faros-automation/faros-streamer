@@ -63,6 +63,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include "errlib.h"
 #include "sockwrap.h"
 #include "faros_polito_IMG_common.h"
@@ -84,8 +85,12 @@
 char *prog_name;
 
 static net_par_t net_par;  // necessaria dichiararla come variabile globale per avere i dati a disposizione nella callback quando e' pronto un frame
+int ctrl_jpg_quality; // condivisa con thread di controllo che la modifica in base a feedback
 
 #define VERSION "1.1"
+
+/* SVICIU: control thread include */
+void *control_thread_main();
 
 
 void pack_yuyv_in_raw_and_send(int width, int height, int Bpf, unsigned char *videobuffer, net_par_t *net_par, pck_t *list) {
@@ -380,6 +385,9 @@ int read_frame  (int * fd, void *frame) {
 	net_par_t *net_par_p = &net_par;  // trasforma la variabile globale in puntatore per comodita'
 
 	unsigned int Bpf = 0;//bytes per frame
+
+	/* SVICIU: change update quality setting (value set by concurrent control thread) */
+	net_par_p->st.jpg_quality = ctrl_jpg_quality;
 
 	reset_jpg_packets_len(net_par_p->st.pck_per_frame, net_par_p->st.pcklist, MAX_PAYLOAD);
 	
@@ -687,6 +695,9 @@ int main_sender (int argc, char ** argv) {
 	net_par.rtp.pt = 0x7C;
 	net_par.rtp.ssrc = 0xABCD0123;
 
+	/* SVICIU: initialize controlled quality parameter */
+	ctrl_jpg_quality = net_par.st.jpg_quality;
+
 #ifndef ACTUA
 	print_pixel_format(net_par.st.pixel_format);
 
@@ -702,6 +713,20 @@ int main_sender (int argc, char ** argv) {
 
 	init_jpg_packets(net_par.st.pck_per_frame, net_par.st.pcklist, MAX_PAYLOAD);
 
+
+	/* SVICIU: fork control thread */
+	{
+	pthread_t chat;
+	int rc;
+
+	printf("[main] creating %s thread.\n", "control");
+	if( (rc = pthread_create(&chat, NULL, control_thread_main, NULL)) ) {
+		printf("ERROR; return code from pthread_create() is %d\n", rc);
+		exit(-1);
+	}
+
+	}
+
 #ifndef ACTUA
 	mainloop_capturing (&fd);
 
@@ -714,8 +739,13 @@ int main_sender (int argc, char ** argv) {
 	uninit_device ();
 	close_device (&fd);
 
+	/* Last thing that main() should do */
+	pthread_exit(NULL);
 	exit (EXIT_SUCCESS);
 #else
+
+
+
 	return 0;
 #endif
 
