@@ -301,14 +301,16 @@ void save_ppm(char *bname, int w, int h, uint8_t *rgb, int grey) {
 
 
 //process frames from ACTUA camera
-int read_frame_actua (void *actua_frame, int size, void *buf2) {
+int read_frame_actua (void *actua_frame, int w, int h, int size, void *buf2) {
 
 	int out_cnt = 0;
+	int px_cnt = 0;
 	
 	uint32_t b;
 	const int shift = 0;
 	const int bits_shift = 2;
 	int idx;
+
 	for (idx=0; idx<size/4; idx++) {
 		b = ((uint32_t *)actua_frame)[idx];
 		uint8_t b1 = (uint8_t)(((b >> (20+shift)) >> bits_shift) & 0x000000FF);
@@ -335,12 +337,31 @@ int read_frame_actua (void *actua_frame, int size, void *buf2) {
 	int width=net_par_p->st.width;
 	int height=net_par_p->st.height;
 
+
+
 	// TEST per verificare se quanto ricevuto dalla kinect e' ok
 	//static int cnt_frames=0;
 	//if (cnt_frames%15==0) {
 	//	save_ppm("test", width, height, frame, 0);
 	//}
 	//cnt_frames++;
+	
+
+#ifdef SCALE
+	unsigned int idx1, idx2;
+	uint8_t *buf3 = (uint8_t *) buf2;
+
+	assert( (w/2) == width );
+	assert( (h/2) == height );
+
+	for(idx1=0; idx1<h; idx1+=2) {
+		for(idx2=0; idx2<w; idx2+=2) {
+			int idx1_s = idx1/2, idx2_s = idx2/2, width_s = w/2;
+			buf3[ 2 * (idx2_s + idx1_s*width_s) +0 ] = buf3[ 2 * (idx2 + idx1*w) +0 ];
+			buf3[ 2 * (idx2_s + idx1_s*width_s) +1 ] = buf3[ 2 * (idx2 + idx1*w) +1 ];
+		}
+	}
+#endif
 
 	//print_pixel_format(net_par_p->st.pixel_format);
 	Bpf = width*height*12/8; // YUYV - YUV422
@@ -348,7 +369,8 @@ int read_frame_actua (void *actua_frame, int size, void *buf2) {
 	static int cnt=0;
 
 	//fprintf(stderr,"cnt=%d\n",cnt);
-
+	
+	
 	double time_before_enc = get_curr_time_usec();
 
 	if (net_par_p->st.framenum % (net_par_p->st.num_frame_skip+1) == 0) {
@@ -395,6 +417,24 @@ int read_frame  (int * fd, void *frame) {
 	//	save_ppm("test", width, height, frame, 0);
 	//}
 	//cnt_frames++;
+	
+	//printf("> W:%d H:%d\n", width, height);
+	// SVICIU: WE NEED TO RESCALE THE VIDEOBUFFER FROM SNAPSHOT AREA (w x h) TO VISUALIZATION AREA (width x height)
+	// YUYV format 2px 8bit per component 16 bit per pixel
+	// ACTUA: gray image, write only Y
+	
+#ifdef SCALE
+	unsigned int idx1, idx2;
+	uint8_t *buf3 = (uint8_t *) frame;
+
+	for(idx1=0; idx1<height; idx1+=2) {
+		for(idx2=0; idx2<width; idx2+=2) {
+			int idx1_s = idx1/2, idx2_s = idx2/2, width_s = width; // /2;
+			buf3[ 2 * (idx2_s + idx1_s*width_s) +0 ] = buf3[ 2 * (idx2 + idx1*width) +0 ];
+			buf3[ 2 * (idx2_s + idx1_s*width_s) +1 ] = buf3[ 2 * (idx2 + idx1*width) +1 ];
+		}
+	}
+#endif
 
 	//print_pixel_format(net_par_p->st.pixel_format);
 	Bpf = width*height*12/8; // YUYV - YUV422
@@ -735,7 +775,7 @@ int main(int argc, char **argv) {
 	
 	while (1) { 
 		//read_frame_actua(frame_actua, 1747624, buf2);
-		read_frame_actua(frame_actua, 1747620, buf2);
+		read_frame_actua(frame_actua, 1280, 1024, 1747620, buf2);
 	}
 }
 #endif

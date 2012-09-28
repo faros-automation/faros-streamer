@@ -403,7 +403,6 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		//printf("FAROS_POLITO_IMG: my_buffer_fill=%d\n",my_buffer_fill);
 
 		jpeg_finish_compress(&cinfo);
-		jpeg_destroy_compress(&cinfo);
 
 		// my_buffer_fill  e' la dimensione dei dati prodotti dalla codifica JPEG
 
@@ -426,6 +425,8 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		//fclose(fout);
 		//printf("FAROS_POLITO_IMG: wrote file %s\n",fname);
 		//cnt++;
+
+		jpeg_destroy_compress(&cinfo);
 	}
 	//printf("FAROS_POLITO_IMG before finish_compress\n");
 	//jpeg_finish_compress(&cinfo);
