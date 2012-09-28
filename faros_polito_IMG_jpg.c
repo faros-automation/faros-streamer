@@ -37,6 +37,8 @@
 #include <jpeglib.h>
 
 #include <stdint.h>
+#include <math.h>
+#include <assert.h>
 
 #include <setjmp.h>
 
@@ -47,6 +49,7 @@
 #define TRUE 1
 
 #define min(a,b) ((a)<(b)? (a) : (b))
+#define max( a, b ) ( ((a) > (b)) ? (a) : (b) )
 
 unsigned char my_buffer[MAX_OUT_JPG_BUF];
 int my_buffer_fill;
@@ -270,11 +273,12 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 
 	unsigned char *buffer;
 	int Bpf;
+	int BpP;
 
 	if (flag_grayscale) {
-		Bpf=width*height;
+		Bpf=width*height; BpP = 1;
 	} else {
-		Bpf=width*height*3;
+		Bpf=width*height*3; BpP = 3;
 	}
 
 	buffer = (unsigned char *)malloc(sizeof(unsigned char)*Bpf);
@@ -313,13 +317,26 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 	}
 
 			
+	/* Define number of rows and columns and macroblock width and height e.g. n_pck=25 */
+	int sqrt_n_pck = sqrt(n_pck);
+	assert(!((sqrt_n_pck*sqrt_n_pck)-n_pck));
+	int mb_width = width / sqrt_n_pck;
+	assert(!((sqrt_n_pck*mb_width)-width));
+	int mb_height = height / sqrt_n_pck;
+	assert(!((sqrt_n_pck*mb_height)-height));
 
-	int k;
-	for (k=0; k<n_pck; k++) {
+	int r,c, k=0;
+	for (r=0; r<sqrt_n_pck; r++) {
+	for (c=0; c<sqrt_n_pck; c++) {
 		//printf("FAROS_POLITO_IMG JPG: k=%d\n", k);
 		//int bufsize=Bpf/n_pck;
-		int bufoff=k*Bpf/n_pck;
-
+		//int bufoff=k*Bpf/n_pck;
+		//int bufoff = k * (width * height * BpP) / n_pck;
+		/* Starting offset of the macroblock */
+		int bufoff = (r * mb_height * width + c * mb_width) * BpP;
+		buffer[bufoff] = 0;
+		buffer[bufoff+1] = 0;
+		buffer[bufoff+2] = 0;
 
 		struct jpeg_compress_struct cinfo;
 		struct jpeg_error_mgr       jerr;
@@ -340,8 +357,8 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		//printf("FAROS_POLITO_IMG: n_pck=%d\n",n_pck);
 
 		// Da fare prima di chiamare set_defaults
-		cinfo.image_width      = width;
-		cinfo.image_height     = height/n_pck;
+		cinfo.image_width      = mb_width;
+		cinfo.image_height     = mb_height;
 		if (flag_grayscale) {
 			cinfo.input_components = 1;
 			cinfo.in_color_space   = JCS_GRAYSCALE;
@@ -359,7 +376,10 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		/*set the quality [0..100]  */
 		//printf("FAROS_POLITO_IMG after set_defaults\n");
 
-		jpeg_set_quality (&cinfo, quality, TRUE);
+		//float Qf = (sqrt_n_pck - abs( r+c - sqrt_n_pck ) / 4) / sqrt_n_pck;
+		float Qf = ( (sqrt_n_pck * .75) - max( abs(r - (sqrt_n_pck / 2)) , abs (c - (sqrt_n_pck / 2)) ) ) / (float) sqrt_n_pck;
+//		printf("r: %d, c: %d, Qf = %f\n", r, c, Qf);
+		jpeg_set_quality (&cinfo, quality*Qf, TRUE);
 
 
 
@@ -395,7 +415,7 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		//printf("FAROS_POLITO_IMG before write_scanlines\n");
 
 		while (cinfo.next_scanline < cinfo.image_height) {
-			row_pointer = (JSAMPROW) ( buffer + bufoff + cinfo.next_scanline*(bits_depth>>3)*cinfo.image_width );
+			row_pointer = (JSAMPROW) ( buffer + bufoff + cinfo.next_scanline*(bits_depth>>3)*width );
 			jpeg_write_scanlines(&cinfo, &row_pointer, 1);
 			//jpeg_write_raw_data(&cinfo, &row_pointer, 1);
 		}
@@ -414,6 +434,7 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		} else {
 			list[k].valid = 0;
 		}
+		k++;
 
 		//if (k<n_pck-1)
 		//	jpeg_abort_compress(&cinfo);
@@ -427,6 +448,7 @@ void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf
 		//cnt++;
 
 		jpeg_destroy_compress(&cinfo);
+	}
 	}
 	//printf("FAROS_POLITO_IMG before finish_compress\n");
 	//jpeg_finish_compress(&cinfo);
@@ -459,7 +481,7 @@ void my_error_handler (j_common_ptr cinfo) {
 }
 
 
-void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_data_len) {
+void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_data_len, int image_width) {
 
 	//my_buffer = jpg_data
 	//bytes_in_input = jpg_data_len
@@ -505,7 +527,8 @@ void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_
 		//JSAMPARRAY imageBuffer = (*cinfo.mem->alloc_sarray)( (j_common_ptr)&cinfo, JPOOL_IMAGE, cinfo.output_width*cinfo.output_components, 1);
 		int y = 0;
 		while (cinfo.output_scanline < cinfo.output_height) {
-			unsigned char *ptr = rgb+y*cinfo.image_width*cinfo.output_components;
+			//unsigned char *ptr = rgb+y*cinfo.image_width*cinfo.output_components;
+			unsigned char *ptr = rgb+y*image_width*cinfo.output_components;
 			jpeg_read_scanlines(&cinfo, (JSAMPARRAY) &ptr, 1);  // They expect the address of a pointer to the row data
 			//jpeg_read_scanlines(&cinfo, imageBuffer, 1);
 			//memcpy(buffer+y*cinfo.image_width, imageBuffer, cinfo.image_width*cinfo.output_components);
@@ -516,11 +539,15 @@ void decode_jpg_packet_rgb(unsigned char *rgb, unsigned char *jpg_data, int jpg_
 
 		if (cinfo.output_components==1) {
 			// riporta, nello stesso buffer, i valori Y come RGB. Parte dal fondo per non sovrascrivere
-			int i;
-			for (i=cinfo.output_width*cinfo.image_height-1; i>=0; i--) {
+			int i,ii,iii;
+			//for (i=cinfo.output_width*cinfo.image_height-1; i>=0; i--) {
+			for(ii=cinfo.image_height; ii>=0; ii--) {
+				for(iii=cinfo.output_width-1 ; iii>=0; iii--) {
+				i = ii * image_width + iii;
 				rgb[i*3+2]=rgb[i];
 				rgb[i*3+1]=rgb[i];
 				rgb[i*3+0]=rgb[i];
+				}
 			}
 		}
 		jpeg_finish_decompress(&cinfo);

@@ -50,7 +50,7 @@ void reset_jpg_packets_len(int n_pck, pck_t *list, int max_size);
 
 void create_jpg_packets(int quality, int n_pck, unsigned char *yuyv, pck_t *list, int header_size, int flag_grayscale, int width, int height);
 void create_jpg_packets_from_buf(int quality, int n_pck, unsigned char *videobuf, pck_t *list, int header_size, int flag_grayscale, int width, int height, int isRGB);
-void decode_jpg_packet_rgb(unsigned char *yuyv, unsigned char *jpg_data, int jpg_data_len);
+void decode_jpg_packet_rgb(unsigned char *yuyv, unsigned char *jpg_data, int jpg_data_len, int image_width);
 
 
 #endif

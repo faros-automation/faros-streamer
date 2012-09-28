@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdint.h>
+#include <math.h>
 
 #include <errno.h>
 #include <ctype.h>
@@ -245,11 +246,19 @@ static void process_image_yuyv (uint8_t * videoFrame,  image_context image_ctx, 
 			if (debug) printf("RTP_get_slicenum() = %d\n", RTP_get_slicenum(pckbuf));
 			int hdr_len=RTP_get_header_len(pckbuf);
 
+			int sqrt_n_pck = sqrt(net_par->st.pck_per_frame);
+			int slicenum = RTP_get_slicenum(pckbuf);
+			int r, c;
+			r = slicenum / sqrt_n_pck; c = slicenum % sqrt_n_pck;
+			int mb_width = net_par->st.width / sqrt_n_pck;
+			int mb_height = net_par->st.height / sqrt_n_pck;
+
 			if (net_par->st.jpg_flag) {
 				// RGB = 3*
-				int pos = (3*net_par->st.width*net_par->st.height/net_par->st.pck_per_frame)*RTP_get_slicenum(pckbuf);
+				//int pos = (3*net_par->st.width*net_par->st.height/net_par->st.pck_per_frame)*RTP_get_slicenum(pckbuf);
+		                int pos = (r * mb_height * net_par->st.width + c * mb_width) * 3;
 				if ( (pckbuf+hdr_len)[0]!=0x00 ) {
-					decode_jpg_packet_rgb(videoFrame+pos, pckbuf+hdr_len, payloadsize-hdr_len);
+					decode_jpg_packet_rgb(videoFrame+pos, pckbuf+hdr_len, payloadsize-hdr_len, net_par->st.width);
 				} else {
 					// not JPG: packet was sent but content could not fit the 1500 byte packet
 					net_par->stat.pck_invalid.all++;
